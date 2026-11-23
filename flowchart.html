@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FlowC 流程图生成器</title>
+<style>
+:root{--primary:#5859dc;--ink:#202b40;--muted:#778297;--border:#e4e8f1}
+*{box-sizing:border-box}
+body{margin:0;background:#f5f7fb;color:var(--ink);font:14px -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+button,select,textarea{font:inherit}button{cursor:pointer}
+.app{max-width:1600px;margin:auto;padding:26px 30px 36px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:26px}
+.logo{width:43px;height:43px;display:grid;place-items:center;background:var(--primary);border-radius:13px;color:white;font-size:23px;font-weight:bold}
+header h1{font-size:18px;margin:0}header p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.intro h2{margin:0 0 8px;font-size:25px}.intro p{margin:0 0 22px;color:var(--muted);line-height:1.7}
+.workspace{display:grid;grid-template-columns:minmax(310px,.85fr) minmax(400px,1.15fr);gap:18px;align-items:start}
+.panel{min-width:0;background:white;border:1px solid var(--border);border-radius:15px;overflow:hidden;box-shadow:0 8px 30px #2833560b}
+.head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:17px 19px;border-bottom:1px solid var(--border)}
+.title{display:flex;gap:10px;align-items:center}.icon{width:36px;height:36px;display:grid;place-items:center;border-radius:10px;background:#eeeefe;color:var(--primary);font-weight:bold}
+.icon.green{background:#e8f8f1;color:#129670}.title h3{font-size:15px;margin:0}.title p{font-size:12px;color:var(--muted);margin:4px 0 0}
+.content{padding:16px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.btn,.upload{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 13px;border:1px solid var(--border);border-radius:8px;background:white;color:#4d5970;font-weight:600;font-size:12px}
+.btn:hover,.upload:hover{border-color:#b7b9ed;color:var(--primary)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:white;min-height:42px;flex:1;font-size:14px}.btn.primary:hover{background:#4849c6}
+.upload{cursor:pointer}.upload input{display:none}
+.editor-head{display:flex;justify-content:space-between;background:#20283a;color:#c5cede;padding:11px 14px;border-radius:9px 9px 0 0;font-size:12px}
+#fileName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+textarea{width:100%;height:410px;display:block;resize:vertical;border:0;outline:0;padding:16px;background:#151c2b;color:#dce4f4;border-radius:0 0 9px 9px;font:13px/1.75 Consolas,Monaco,monospace;white-space:pre;tab-size:4}
+.form-row{display:flex;gap:9px;align-items:center;margin-top:13px}.form-row label{color:#66738a;white-space:nowrap;font-size:12px}
+select{min-width:0;flex:1;height:38px;padding:0 9px;border:1px solid var(--border);border-radius:8px;background:white;color:#354158}
+.actions{display:flex;gap:9px;margin-top:13px}.hint{font-size:12px;line-height:1.7;color:var(--muted);margin:13px 0 0}
+.canvas{height:620px;overflow:auto;background-color:#fafbfe;background-image:radial-gradient(#dce2ee 1px,transparent 1px);background-size:20px 20px}
+.canvas-inner{min-width:100%;min-height:100%;width:max-content;padding:24px;display:flex;justify-content:center;align-items:flex-start}
+.canvas svg{display:block;flex:none;background:white;border-radius:8px}
+.empty{margin:auto;text-align:center;color:var(--muted);padding:40px}.empty strong{display:block;color:#536078;margin-bottom:8px}
+.footer{display:flex;justify-content:space-between;gap:10px;padding:13px 18px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
+#status{color:#168d6f}#status.error{color:#ce5555}
+.note{margin-top:17px;padding:15px 18px;background:#fff;border:1px solid var(--border);border-radius:12px;color:#748197;font-size:12px;line-height:1.8}.note strong{color:#4d5870}
+.print-area{display:none}
+@page{size:A4 portrait;margin:0}
+@media print{
+ html,body{width:210mm;height:297mm;margin:0!important;padding:0!important;background:white!important}
+ .app{display:none!important}
+ .print-area{display:block!important;position:relative;width:210mm;height:297mm;overflow:hidden}
+ .print-title{position:absolute;top:7mm;left:8mm;width:194mm;height:9mm;line-height:9mm;margin:0;text-align:center;font-size:13pt;overflow:hidden}
+ .print-frame{position:absolute;top:19mm;left:8mm;width:194mm;height:270mm;overflow:hidden;text-align:center}
+ .print-frame svg{display:inline-block;vertical-align:top}
+}
+@media(max-width:850px){.app{padding:20px 15px}.workspace{grid-template-columns:1fr}textarea{height:330px}.canvas{height:500px}}
+@media(max-width:460px){.head{padding:14px}.footer{flex-wrap:wrap}.intro h2{font-size:21px}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <div class="logo">◇</div>
+    <div><h1>FlowC 流程图</h1><p>让代码逻辑，一目了然</p></div>
+  </header>
+
+  <section class="intro">
+    <h2>把 C / C++ 代码变成流程图</h2>
+    <p>上传文件或粘贴代码，生成结构清晰的流程图，并保存为单页 PDF。</p>
+  </section>
+
+  <div class="workspace">
+    <section class="panel">
+      <div class="head">
+        <div class="title">
+          <div class="icon">&lt;/&gt;</div>
+          <div><h3>输入代码</h3><p>支持 .c、.cpp 和文本文件</p></div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="toolbar">
+          <label class="upload">↑ 上传代码文件
+            <input id="upload" type="file" accept=".c,.cpp,.cc,.cxx,.h,.hpp,.txt">
+          </label>
+          <button class="btn" id="exampleBtn" type="button">载入示例</button>
+          <button class="btn" id="clearBtn" type="button">清空</button>
+        </div>
+        <div class="editor-head"><span id="fileName">示例代码 · main.c</span><span>● ● ●</span></div>
+        <textarea id="code" spellcheck="false" aria-label="代码输入区域" placeholder="请在这里粘贴 C 或 C++ 代码"></textarea>
+        <div class="form-row">
+          <label for="functionSelect">选择函数</label>
+          <select id="functionSelect" aria-label="选择函数"></select>
+          <button class="btn" id="refreshBtn" type="button">刷新函数</button>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="generateBtn" type="button">✦ 生成流程图</button>
+        </div>
+        <p class="hint">
+          分支分列显示，循环回线绕到外侧；跳转语句以文字标注目标，避免长连线穿过其他图形。
+          快捷键：Ctrl / ⌘ + Enter。
+        </p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="head">
+        <div class="title">
+          <div class="icon green">◇</div>
+          <div><h3>流程图预览</h3><p>较大的流程图可滚动查看</p></div>
+        </div>
+        <button class="btn" id="pdfBtn" type="button" disabled>↓ 导出单页 PDF</button>
+      </div>
+      <div class="canvas" id="canvas">
+        <div class="canvas-inner" id="canvasInner">
+          <div class="empty"><strong>流程图将在这里呈现</strong>输入代码后点击“生成流程图”</div>
+        </div>
+      </div>
+      <div class="footer">
+        <span id="status">● 准备就绪</span>
+        <span>打印时选择“另存为 PDF”</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="note">
+    <strong>连线说明：</strong>常见的顺序、条件和循环采用分区布局。
+    为减少跨越整张图的连线，<code>break</code>、<code>continue</code> 和
+    <code>return</code> 用文字标注跳转目标；<code>switch</code> 中的贯穿执行也用文字标注。
+    复杂嵌套时仍可能出现线条靠近或交会，请核对源代码。
+    <br>
+    <strong>PDF：</strong>默认 A4 纵向并缩放到一页。浏览器若显示页眉页脚，请在打印设置中手动关闭。
+    <br>
+    <strong>解析范围：</strong>本工具不会编译或执行代码，函数调用不会自动展开；
+    宏、模板、异常、goto 等复杂语法不能保证准确。文件只在本地读取。
+  </div>
+</main>
+
+<section class="print-area" id="printArea" aria-label="待打印流程图"></section>
+
+<script>
+"use strict";
+
+const example = `#include <stdio.h>
+
+int main() {
+    int score;
+    printf("请输入成绩：");
+    scanf("%d", &score);
+
+    if (score >= 60) {
+        printf("通过");
+    } else {
+        printf("未通过");
+    }
+
+    for (int i = 0; i < 3; i++) {
+        printf("%d", i);
+    }
+
+    return 0;
+}`;
+
+const $ = id => document.getElementById(id);
+const code = $("code");
+const functionSelect = $("functionSelect");
+let functionsFound = [];
+let currentSvg = null;
+let currentTitle = "代码流程图";
+let generatedCode = "";
+let generatedFunction = "";
+
+function status(message, error = false) {
+  $("status").textContent = "● " + message;
+  $("status").classList.toggle("error", error);
+}
+
+function sanitize(source) {
+  const out = source.split("");
+  let i = 0, quote = "", lineStart = true;
+  while (i < source.length) {
+    const c = source[i], n = source[i + 1];
+    if (quote) {
+      if (c === "\\") { i += 2; continue; }
+      if (c === quote) quote = "";
+      if (c === "\n") lineStart = true;
+      i++;
+      continue;
+    }
+    if (lineStart && (c === " " || c === "\t" || c === "\r")) {
+      i++;
+      continue;
+    }
+    if (lineStart && c === "#") {
+      while (i < source.length) {
+        if (source[i] === "\n") {
+          let j = i - 1;
+          while (j >= 0 && source[j] === "\r") j--;
+          if (source[j] !== "\\") break;
+          i++;
+          continue;
+        }
+        out[i++] = " ";
+      }
+      lineStart = true;
+      continue;
+    }
+    lineStart = c === "\n";
+    if (c === '"' || c === "'") {
+      quote = c;
+      i++;
+    } else if (c === "/" && n === "/") {
+      out[i++] = " ";
+      out[i++] = " ";
+      while (i < source.length && source[i] !== "\n") out[i++] = " ";
+    } else if (c === "/" && n === "*") {
+      out[i++] = " ";
+      out[i++] = " ";
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] !== "\n" && source[i] !== "\r") out[i] = " ";
+        i++;
+      }
+      if (i < source.length) { out[i++] = " "; out[i++] = " "; }
+    } else i++;
+  }
+  return out.join("");
+}
+
+function findMatching(s, start, open, close) {
+  let depth = 0, quote = "";
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = "";
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === open) depth++;
+    else if (c === close && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function findFunctions(source) {
+  const s = sanitize(source);
+  const found = [];
+  const re = /\b([A-Za-z_]\w*(?:::\w+)*)\s*\(/g;
+  const excluded = new Set(["if","for","while","switch","catch","sizeof","return"]);
+  let match;
+  while ((match = re.exec(s))) {
+    const name = match[1];
+    if (excluded.has(name)) continue;
+    const open = s.indexOf("(", match.index);
+    const close = findMatching(s, open, "(", ")");
+    if (close < 0) continue;
+    let pos = close + 1;
+    while (/\s/.test(s[pos] || "")) pos++;
+    while (/^(const|noexcept)\b/.test(s.slice(pos))) {
+      const m = /^(const|noexcept)\b/.exec(s.slice(pos));
+      pos += m[0].length;
+      while (/\s/.test(s[pos] || "")) pos++;
+    }
+    if (s[pos] !== "{") continue;
+    const end = findMatching(s, pos, "{", "}");
+    if (end < 0) throw new Error("函数 " + name + " 的大括号未闭合。");
+    found.push({name, start:pos + 1, end});
+    re.lastIndex = end + 1;
+  }
+  return found;
+}
+
+function refreshFunctions(preferred) {
+  functionsFound = findFunctions(code.value);
+  functionSelect.replaceChildren();
+  if (!functionsFound.length) {
+    const option = document.createElement("option");
+    option.value = "fragment";
+    option.textContent = "代码片段";
+    functionSelect.appendChild(option);
+    return;
+  }
+  functionsFound.forEach((fn,index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = fn.name + "()";
+    functionSelect.appendChild(option);
+  });
+  const old = functionsFound.findIndex(f => f.name === preferred);
+  const main = functionsFound.findIndex(f => f.name === "main");
+  functionSelect.value = String(old >= 0 ? old : main >= 0 ? main : 0);
+}
+
+function splitFor(text) {
+  const parts = [];
+  let start = 0, depth = 0, quote = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = "";
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (c === ";" && depth === 0) {
+      parts.push(text.slice(start,i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start).trim());
+  if (parts.length !== 3) return {init:"",condition:text,step:"",unusual:true};
+  return {init:parts[0],condition:parts[1] || "真",step:parts[2]};
+}
+
+class Parser {
+  constructor(source) {
+    this.s = sanitize(source);
+    this.i = 0;
+    this.warnings = new Set();
+  }
+  skip() {
+    while (this.i < this.s.length && /\s/.test(this.s[this.i])) this.i++;
+  }
+  isWord(word) {
+    this.skip();
+    return this.s.startsWith(word,this.i) &&
+      !/[A-Za-z0-9_]/.test(this.s[this.i + word.length] || "");
+  }
+  take(word) {
+    if (!this.isWord(word)) return false;
+    this.i += word.length;
+    return true;
+  }
+  group() {
+    this.skip();
+    if (this.s[this.i] !== "(") throw new Error("缺少左括号，请检查代码。");
+    const end = findMatching(this.s,this.i,"(",")");
+    if (end < 0) throw new Error("括号未闭合，请检查代码。");
+    const value = this.s.slice(this.i + 1,end).trim();
+    this.i = end + 1;
+    return value;
+  }
+  readStatement() {
+    this.skip();
+    const start = this.i;
+    let paren = 0, bracket = 0, brace = 0, quote = "";
+    while (this.i < this.s.length) {
+      const c = this.s[this.i];
+      if (quote) {
+        if (c === "\\") this.i++;
+        else if (c === quote) quote = "";
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === "(") paren++;
+      else if (c === ")") paren--;
+      else if (c === "[") bracket++;
+      else if (c === "]") bracket--;
+      else if (c === "{") brace++;
+      else if (c === "}") {
+        if (brace > 0) brace--;
+        else break;
+      } else if (c === ";" && paren === 0 && bracket === 0 && brace === 0) {
+        const value = this.s.slice(start,this.i).trim();
+        this.i++;
+        return value;
+      }
+      this.i++;
+    }
+    return this.s.slice(start,this.i).trim();
+  }
+  body() {
+    this.skip();
+    if (this.s[this.i] === "{") {
+      this.i++;
+      const nodes = this.sequence(true);
+      this.skip();
+      if (this.s[this.i] !== "}") throw new Error("代码块的大括号未闭合。");
+      this.i++;
+      return nodes;
+    }
+    const node = this.one();
+    return node ? (Array.isArray(node) ? node : [node]) : [];
+  }
+  readCaseLabel() {
+    this.skip();
+    const start = this.i;
+    let depth = 0, quote = "", ternary = 0;
+    while (this.i < this.s.length) {
+      const c = this.s[this.i];
+      if (quote) {
+        if (c === "\\") this.i++;
+        else if (c === quote) quote = "";
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === "(") depth++;
+      else if (c === ")") depth--;
+      else if (c === "?" && depth === 0) ternary++;
+      else if (c === ":" && depth === 0) {
+        if (ternary) ternary--;
+        else {
+          const label = this.s.slice(start,this.i).trim();
+          this.i++;
+          return label;
+        }
+      }
+      this.i++;
+    }
+    throw new Error("case 标签缺少冒号。");
+  }
+  parseSwitch() {
+    const expression = this.group();
+    this.skip();
+    if (this.s[this.i] !== "{") throw new Error("switch 后缺少代码块。");
+    this.i++;
+    const cases = [];
+    let current = null;
+    while (this.i < this.s.length) {
+      this.skip();
+      if (this.s[this.i] === "}") {
+        this.i++;
+        return {type:"switch",expression,cases};
+      }
+      if (this.take("case")) {
+        current = {label:"case " + this.readCaseLabel(),body:[]};
+        cases.push(current);
+      } else if (this.take("default")) {
+        this.skip();
+        if (this.s[this.i] !== ":") throw new Error("default 后缺少冒号。");
+        this.i++;
+        current = {label:"default",body:[]};
+        cases.push(current);
+      } else {
+        const before = this.i;
+        const node = this.one();
+        if (!current) {
+          current = {label:"未标记语句",body:[]};
+          cases.push(current);
+          this.warnings.add("switch 中存在 case 之前的语句");
+        }
+        if (Array.isArray(node)) current.body.push(...node);
+        else if (node) current.body.push(node);
+        if (this.i === before) this.i++;
+      }
+    }
+    throw new Error("switch 代码块未闭合。");
+  }
+  one() {
+    this.skip();
+    if (this.i >= this.s.length || this.s[this.i] === "}") return null;
+    if (this.take("if")) {
+      const condition = this.group();
+      const yes = this.body();
+      const no = this.take("else") ? this.body() : [];
+      return {type:"if",condition,yes,no};
+    }
+    if (this.take("for")) {
+      const parts = splitFor(this.group());
+      if (parts.unusual) this.warnings.add("for 语句较复杂，请人工核对");
+      return {type:"for",...parts,body:this.body()};
+    }
+    if (this.take("while")) {
+      const condition = this.group();
+      return {type:"while",condition,body:this.body()};
+    }
+    if (this.take("do")) {
+      const body = this.body();
+      if (!this.take("while")) throw new Error("do 后缺少 while 条件。");
+      const condition = this.group();
+      this.skip();
+      if (this.s[this.i] === ";") this.i++;
+      return {type:"do",condition,body};
+    }
+    if (this.take("switch")) return this.parseSwitch();
+    if (this.s[this.i] === "{") return this.body();
+    const text = this.readStatement();
+    if (!text) return null;
+    if (/^return\b/.test(text)) return {type:"return",text};
+    if (/^break\b/.test(text)) return {type:"break",text};
+    if (/^continue\b/.test(text)) return {type:"continue",text};
+    if (/^(goto|try|catch|throw)\b/.test(text)) {
+      this.warnings.add("包含未完整支持的跳转或异常语法");
+    }
+    return {type:"statement",text};
+  }
+  sequence(stopAtBrace = false) {
+    const list = [];
+    while (this.i < this.s.length) {
+      this.skip();
+      if (stopAtBrace && this.s[this.i] === "}") break;
+      if (!stopAtBrace && this.s[this.i] === "}") throw new Error("发现多余的右大括号。");
+      if (this.i >= this.s.length) break;
+      const before = this.i;
+      const node = this.one();
+      if (Array.isArray(node)) list.push(...node);
+      else if (node) list.push(node);
+      if (this.i === before) this.i++;
+    }
+    return list;
+  }
+}
+
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag,attrs = {},text) {
+  const el = document.createElementNS(NS,tag);
+  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k,v);
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function wrapText(text, max = 23) {
+  const chars = Array.from(String(text).replace(/\s+/g," ").trim() || "（空）");
+  const result = [];
+  while (chars.length) result.push(chars.splice(0,max).join(""));
+  return result;
+}
+
+/*
+  布局采用递归分区：
+  每个子流程先计算宽度与高度，再在自己的矩形区域内绘制。
+  跳转语句不画跨越其他分区的长连线，而使用文字标注。
+*/
+function makeDiagram(ast,name) {
+  const BOX = 210;
+  const GAP = 36;
+  const BRANCH_GAP = 60;
+  const LOOP_SIDE = 65;
+  const warnings = new Set();
+  let loopNumber = 0;
+  let switchNumber = 0;
+
+  function height(text,kind) {
+    const lines = wrapText(text).length;
+    if (kind === "decision") return Math.max(82,lines * 18 + 52);
+    return Math.max(48,lines * 18 + 24);
+  }
+
+  function seqLayout(list,ctx) {
+    const children = list.map(item => layout(item,ctx));
+    return {
+      type:"seq",
+      children,
+      width:Math.max(BOX,...children.map(c => c.width)),
+      height:children.length
+        ? children.reduce((sum,c) => sum + c.height,0) + GAP * (children.length - 1)
+        : 0,
+      exits:children.length ? children[children.length - 1].exits : true
+    };
+  }
+
+  function layout(item,ctx) {
+    if (item.type === "statement") {
+      return {type:"box",text:item.text,kind:"process",width:BOX,height:height(item.text,"process"),exits:true};
+    }
+
+    if (item.type === "return" || item.type === "break" || item.type === "continue") {
+      let target = "函数结束";
+      if (item.type === "break") {
+        target = ctx.breakTarget ? "跳出 " + ctx.breakTarget : "无有效目标";
+        if (!ctx.breakTarget) warnings.add("发现不在循环或 switch 内的 break");
+      }
+      if (item.type === "continue") {
+        target = ctx.continueTarget ? "继续 " + ctx.continueTarget : "无有效目标";
+        if (!ctx.continueTarget) warnings.add("发现不在循环内的 continue");
+      }
+      const text = item.text + " → " + target;
+      return {type:"box",text,kind:"jump",width:BOX,height:height(text,"jump"),exits:false};
+    }
+
+    if (item.type === "if") {
+      const yes = seqLayout(item.yes,ctx);
+      const no = seqLayout(item.no,ctx);
+      const w = yes.width + no.width + BRANCH_GAP;
+      const testH = height(item.condition,"decision");
+      const branchH = Math.max(yes.height,no.height,8);
+      return {
+        type:"if",text:item.condition,yes,no,width:w,
+        testH,branchH,height:testH + 55 + branchH + 50,
+        exits:yes.exits || no.exits
+      };
+    }
+
+    if (item.type === "while" || item.type === "for" || item.type === "do") {
+      const id = "循环 " + (++loopNumber);
+      const inner = {...ctx,breakTarget:id,continueTarget:id};
+      const body = seqLayout(item.body,inner);
+      const initText = item.type === "for" ? item.init : "";
+      const stepText = item.type === "for" ? item.step : "";
+      const initH = initText ? height(initText,"process") + GAP : 0;
+      const stepH = stepText ? GAP + height(stepText,"process") : 0;
+      const testH = height((item.condition || "真") + " · " + id,"decision");
+      const bodyH = Math.max(body.height,8);
+      const width = Math.max(BOX,body.width) + LOOP_SIDE * 2;
+      if (item.type === "do") {
+        return {
+          type:"do",id,text:item.condition,body,width,testH,bodyH,
+          height:30 + bodyH + GAP + testH + 48,exits:true
+        };
+      }
+      return {
+        type:"loop",id,text:item.condition || "真",body,initText,stepText,
+        width,testH,bodyH,initH,stepH,
+        height:initH + testH + 40 + bodyH + stepH + 50,exits:true
+      };
+    }
+
+    if (item.type === "switch") {
+      const id = "选择 " + (++switchNumber);
+      const inner = {...ctx,breakTarget:id};
+      const branches = item.cases.map((branch,index) => {
+        const body = seqLayout(branch.body,inner);
+        const falls = body.exits && index < item.cases.length - 1;
+        return {label:branch.label,body,falls};
+      });
+      if (!branches.length) warnings.add("switch 没有 case 分支");
+      const widths = branches.map(b => Math.max(BOX,b.body.width));
+      const totalWidth = Math.max(BOX,
+        widths.reduce((a,b) => a+b,0) + Math.max(0,branches.length-1) * BRANCH_GAP);
+      const testH = height("switch (" + item.expression + ")","decision");
+      const branchHeight = Math.max(0,...branches.map(b => b.body.height));
+      return {
+        type:"switch",text:"switch (" + item.expression + ") · " + id,
+        branches,widths,width:totalWidth,testH,branchHeight,
+        height:testH + 70 + branchHeight + 72,exits:true
+      };
+    }
+
+    const text = "未识别语句";
+    warnings.add("存在未识别的语句");
+    return {type:"box",text,kind:"process",width:BOX,height:height(text,"process"),exits:true};
+  }
+
+  const tree = seqLayout(ast,{breakTarget:null,continueTarget:null});
+  const startText = "开始 · " + name;
+  const startH = height(startText,"terminal");
+  const endH = height("结束","terminal");
+  const width = tree.width + 80;
+  const totalHeight = 25 + startH + GAP + tree.height + GAP + endH + 25;
+
+  const svg = svgEl("svg",{
+    xmlns:NS,width,height:totalHeight,
+    viewBox:`0 0 ${width} ${totalHeight}`,
+    role:"img","aria-label":"代码流程图"
+  });
+  const defs = svgEl("defs");
+  const marker = svgEl("marker",{
+    id:"arrow",viewBox:"0 0 10 10",refX:"9",refY:"5",
+    markerWidth:"6",markerHeight:"6",orient:"auto"
+  });
+  marker.appendChild(svgEl("path",{d:"M0 0 L10 5 L0 10 Z",fill:"#8796aa"}));
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  const edges = svgEl("g",{
+    fill:"none",stroke:"#8796aa","stroke-width":"1.5",
+    "stroke-linecap":"round","stroke-linejoin":"round"
+  });
+  const shapes = svgEl("g");
+  const labels = svgEl("g");
+  svg.append(edges,shapes,labels);
+
+  function line(d,arrow = true) {
+    const attrs = {d};
+    if (arrow) attrs["marker-end"] = "url(#arrow)";
+    edges.appendChild(svgEl("path",attrs));
+  }
+
+  function label(x,y,text) {
+    labels.appendChild(svgEl("text",{
+      x,y,fill:"#6e7a8e","font-size":"11",
+      "font-family":"Arial, Microsoft YaHei, sans-serif",
+      "text-anchor":"middle",stroke:"white","stroke-width":"4",
+      "paint-order":"stroke"
+    },text));
+  }
+
+  function box(x,y,text,kind,h) {
+    const colors = {
+      terminal:["#e8f8f1","#9edcc6","#238466"],
+      process:["#eef5ff","#a9cbed","#385d83"],
+      decision:["#fff7e9","#efca89","#916a2c"],
+      jump:["#fff0f0","#edb6b6","#ae5555"]
+    };
+    const [fill,stroke,color] = colors[kind];
+    if (kind === "decision") {
+      shapes.appendChild(svgEl("path",{
+        d:`M ${x} ${y} L ${x+BOX/2} ${y+h/2} L ${x} ${y+h} L ${x-BOX/2} ${y+h/2} Z`,
+        fill,stroke,"stroke-width":"1.5"
+      }));
+    } else {
+      shapes.appendChild(svgEl("rect",{
+        x:x-BOX/2,y,width:BOX,height:h,
+        rx:kind === "terminal" ? 24 : 8,fill,stroke,"stroke-width":"1.5"
+      }));
+    }
+    const lines = wrapText(text);
+    const txt = svgEl("text",{
+      x,y:y+h/2-(lines.length-1)*9+4,fill:color,"font-size":"12",
+      "font-family":"Consolas, Microsoft YaHei, monospace","text-anchor":"middle"
+    });
+    lines.forEach((part,index) => txt.appendChild(svgEl("tspan",{
+      x,dy:index === 0 ? 0 : 18
+    },part)));
+    shapes.appendChild(txt);
+  }
+
+  function drawSeq(seq,cx,y) {
+    let currentY = y;
+    seq.children.forEach((child,index) => {
+      draw(child,cx,currentY);
+      const bottom = currentY + child.height;
+      if (index < seq.children.length-1 && child.exits) {
+        line(`M ${cx} ${bottom} V ${bottom+GAP}`);
+      }
+      currentY = bottom + (index < seq.children.length-1 ? GAP : 0);
+    });
+  }
+
+  function draw(node,cx,y) {
+    if (node.type === "box") {
+      box(cx,y,node.text,node.kind,node.height);
+      return;
+    }
+
+    if (node.type === "if") {
+      box(cx,y,node.text,"decision",node.testH);
+      const leftX = cx - node.width/2 + node.yes.width/2;
+      const rightX = cx + node.width/2 - node.no.width/2;
+      const splitY = y + node.testH + 22;
+      const branchY = y + node.testH + 55;
+      const endY = y + node.height;
+
+      line(`M ${cx} ${y+node.testH} V ${splitY}`,false);
+      line(`M ${cx} ${splitY} H ${leftX} V ${branchY}`,node.yes.children.length > 0);
+      line(`M ${cx} ${splitY} H ${rightX} V ${branchY}`,node.no.children.length > 0);
+      label(leftX,splitY-7,"是");
+      label(rightX,splitY-7,"否");
+
+      drawSeq(node.yes,leftX,branchY);
+      drawSeq(node.no,rightX,branchY);
+
+      const mergeY = endY - 12;
+      if (node.yes.exits) {
+        const fromY = branchY + node.yes.height;
+        line(`M ${leftX} ${fromY} V ${mergeY} H ${cx}`,false);
+      }
+      if (node.no.exits) {
+        const fromY = branchY + node.no.height;
+        line(`M ${rightX} ${fromY} V ${mergeY} H ${cx}`,false);
+      }
+      if (node.exits) line(`M ${cx} ${mergeY} V ${endY}`,false);
+      return;
+    }
+
+    if (node.type === "loop") {
+      let testY = y;
+      if (node.initText) {
+        const initHeight = height(node.initText,"process");
+        box(cx,y,node.initText,"process",initHeight);
+        line(`M ${cx} ${y+initHeight} V ${y+node.initH}`);
+        testY = y + node.initH;
+      }
+
+      box(cx,testY,node.text + " · " + node.id,"decision",node.testH);
+      const bodyY = testY + node.testH + 40;
+      const sideLeft = cx - node.width/2 + 15;
+      const sideRight = cx + node.width/2 - 15;
+      const testMid = testY + node.testH/2;
+      const exitY = y + node.height;
+
+      line(`M ${cx} ${testY+node.testH} V ${bodyY}`,node.body.children.length > 0);
+      label(cx+18,testY+node.testH+22,"是");
+      drawSeq(node.body,cx,bodyY);
+
+      let bodyEnd = bodyY + node.bodyH;
+      if (node.stepText) {
+        const stepY = bodyEnd + GAP;
+        if (node.body.exits) line(`M ${cx} ${bodyEnd} V ${stepY}`);
+        const stepHeight = height(node.stepText,"process");
+        box(cx,stepY,node.stepText,"process",stepHeight);
+        bodyEnd = stepY + stepHeight;
+      }
+
+      if (node.body.exits || node.stepText) {
+        line(`M ${cx} ${bodyEnd} V ${bodyEnd+18} H ${sideLeft} V ${testY-16} H ${cx} V ${testY}`);
+      }
+
+      line(`M ${cx+BOX/2} ${testMid} H ${sideRight} V ${exitY-12} H ${cx} V ${exitY}`,false);
+      label(sideRight,testMid-8,"否");
+      return;
+    }
+
+    if (node.type === "do") {
+      const bodyY = y + 30;
+      const testY = bodyY + node.bodyH + GAP;
+      const sideLeft = cx - node.width/2 + 15;
+      line(`M ${cx} ${y} V ${bodyY}`,node.body.children.length > 0);
+      drawSeq(node.body,cx,bodyY);
+      if (node.body.exits) line(`M ${cx} ${bodyY+node.bodyH} V ${testY}`);
+      box(cx,testY,node.text + " · " + node.id,"decision",node.testH);
+      line(`M ${cx-BOX/2} ${testY+node.testH/2} H ${sideLeft} V ${y+12} H ${cx} V ${bodyY}`);
+      label(sideLeft,testY+node.testH/2-8,"是");
+      line(`M ${cx} ${testY+node.testH} V ${y+node.height}`,false);
+      label(cx+18,testY+node.testH+23,"否");
+      return;
+    }
+
+    if (node.type === "switch") {
+      box(cx,y,node.text,"decision",node.testH);
+      const splitY = y + node.testH + 20;
+      const branchY = y + node.testH + 70;
+      const exitY = y + node.height;
+      line(`M ${cx} ${y+node.testH} V ${splitY}`,false);
+
+      let left = cx - node.width/2;
+      node.branches.forEach((branch,index) => {
+        const branchX = left + node.widths[index]/2;
+        const end = branchY + branch.body.height;
+        line(`M ${cx} ${splitY} H ${branchX} V ${branchY}`,branch.body.children.length > 0);
+        label(branchX,splitY+18,branch.label);
+        drawSeq(branch.body,branchX,branchY);
+
+        if (branch.falls) {
+          label(branchX,end+22,"↓ 继续执行下一 case");
+        } else if (branch.body.exits) {
+          label(branchX,end+22,"↓ switch 结束");
+        }
+        left += node.widths[index] + BRANCH_GAP;
+      });
+
+      if (!node.branches.some(b => b.label === "default")) {
+        label(cx,y+node.testH+44,"无匹配时跳过");
+      }
+      /*
+        switch 的各分支以文字表示贯穿与退出，不在分支底部绘制横跨所有
+        分支的长线，避免穿过其他分支。
+      */
+      label(cx,exitY-8,"↓ switch 后继续");
+      return;
+    }
+  }
+
+  const cx = width/2;
+  box(cx,25,startText,"terminal",startH);
+  const treeY = 25 + startH + GAP;
+  line(`M ${cx} ${25+startH} V ${treeY}`);
+  drawSeq(tree,cx,treeY);
+  const endY = treeY + tree.height + GAP;
+  if (tree.exits) line(`M ${cx} ${treeY+tree.height} V ${endY}`);
+  box(cx,endY,"结束","terminal",endH);
+
+  return {svg,warnings:[...warnings]};
+}
+
+function generate() {
+  try {
+    if (!code.value.trim()) throw new Error("请先输入代码或上传文件。");
+    const selectedName = functionsFound[Number(functionSelect.value)]?.name;
+    refreshFunctions(selectedName);
+    let source = code.value;
+    let name = "代码片段";
+    if (functionSelect.value !== "fragment") {
+      const fn = functionsFound[Number(functionSelect.value)];
+      source = code.value.slice(fn.start,fn.end);
+      name = fn.name + "()";
+    }
+
+    const parser = new Parser(source);
+    const ast = parser.sequence();
+    if (!ast.length) throw new Error("没有找到可展示的语句。");
+    const result = makeDiagram(ast,name);
+    currentSvg = result.svg;
+    currentTitle = name + " 流程图";
+    generatedCode = code.value;
+    generatedFunction = functionSelect.value;
+    $("canvasInner").replaceChildren(currentSvg);
+    $("pdfBtn").disabled = false;
+    $("canvas").scrollTo(0,0);
+
+    const warnings = [...parser.warnings,...result.warnings];
+    status(warnings.length
+      ? "已生成；注意：" + warnings.join("；")
+      : "已生成 " + name + " 的流程图");
+  } catch (err) {
+    status(err.message || "生成失败，请检查代码。",true);
+  }
+}
+
+$("upload").addEventListener("change",async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    code.value = await file.text();
+    $("fileName").textContent = file.name;
+    refreshFunctions();
+    status("文件已载入，请选择函数并生成");
+  } catch {
+    status("文件读取失败，请重试。",true);
+  }
+  event.target.value = "";
+});
+
+$("refreshBtn").addEventListener("click",() => {
+  try {
+    const current = functionsFound[Number(functionSelect.value)]?.name;
+    refreshFunctions(current);
+    status("函数列表已更新");
+  } catch (err) {
+    status(err.message,true);
+  }
+});
+
+$("generateBtn").addEventListener("click",generate);
+functionSelect.addEventListener("change",() => status("已选择函数，点击生成流程图"));
+
+$("exampleBtn").addEventListener("click",() => {
+  code.value = example;
+  $("fileName").textContent = "示例代码 · main.c";
+  refreshFunctions("main");
+  generate();
+});
+
+$("clearBtn").addEventListener("click",() => {
+  code.value = "";
+  $("fileName").textContent = "未命名";
+  refreshFunctions();
+  currentSvg = null;
+  generatedCode = "";
+  $("pdfBtn").disabled = true;
+  const empty = document.createElement("div");
+  empty.className = "empty";
+  const strong = document.createElement("strong");
+  strong.textContent = "流程图将在这里呈现";
+  empty.append(strong,document.createTextNode("输入代码后点击“生成流程图”"));
+  $("canvasInner").replaceChildren(empty);
+  status("已清空");
+  code.focus();
+});
+
+$("pdfBtn").addEventListener("click",() => {
+  if (!currentSvg) return;
+  if (code.value !== generatedCode || functionSelect.value !== generatedFunction) {
+    status("代码或函数已更改，请先重新生成流程图。",true);
+    return;
+  }
+
+  const heading = document.createElement("h1");
+  heading.className = "print-title";
+  heading.textContent = currentTitle;
+  const frame = document.createElement("div");
+  frame.className = "print-frame";
+  const copy = currentSvg.cloneNode(true);
+  const marker = copy.querySelector("#arrow");
+  if (marker) marker.id = "print-arrow";
+  copy.querySelectorAll('[marker-end="url(#arrow)"]').forEach(path => {
+    path.setAttribute("marker-end","url(#print-arrow)");
+  });
+
+  const vb = currentSvg.viewBox.baseVal;
+  const scale = Math.min(194 / vb.width,270 / vb.height);
+  const w = (vb.width * scale).toFixed(3) + "mm";
+  const h = (vb.height * scale).toFixed(3) + "mm";
+  copy.setAttribute("width",w);
+  copy.setAttribute("height",h);
+  copy.style.width = w;
+  copy.style.height = h;
+  copy.setAttribute("preserveAspectRatio","xMidYMin meet");
+  frame.appendChild(copy);
+  $("printArea").replaceChildren(heading,frame);
+  status("请选择“另存为 PDF”；如有页眉页脚，请在打印设置中关闭");
+  window.print();
+});
+
+code.addEventListener("keydown",event => {
+  if (event.key === "Tab") {
+    event.preventDefault();
+    code.setRangeText("    ",code.selectionStart,code.selectionEnd,"end");
+  } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    generate();
+  }
+});
+
+code.value = example;
+refreshFunctions("main");
+generate();
+</script>
+</body>
+</html>
